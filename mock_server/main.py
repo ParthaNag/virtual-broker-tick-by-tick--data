@@ -215,14 +215,36 @@ def historical_data(request: dict[str, Any]) -> dict[str, Any]:
         interval = request.get("interval", "1m")
         fields = request.get("fields") or ["open", "high", "low", "close", "cumulative_volume"]
         end = parse_datetime(request.get("endDate") or request.get("to_date")) or clock.now
-        start = parse_datetime(request.get("startDate") or request.get("from_date")) or (end - timedelta(days=1))
         include_partial = bool(request.get("includePartial", request.get("include_partial", True)))
+        
+        limit_val = request.get("limit")
+        limit = int(limit_val) if limit_val is not None else None
+
+        if limit and limit > 0:
+            import math
+            from datetime import datetime
+            from .engine import MARKET_OPEN, IST, interval_minutes
+            
+            try:
+                minutes = interval_minutes(interval)
+            except ValueError:
+                minutes = 1
+            
+            trading_days_needed = math.ceil((limit * minutes) / 375.0)
+            calendar_days_needed = max(5, trading_days_needed * 2 + 5)
+            start_date = (end - timedelta(days=calendar_days_needed)).date()
+            start_date = max(start_date, store.first_date())
+            start = datetime.combine(start_date, MARKET_OPEN, tzinfo=IST)
+        else:
+            start = parse_datetime(request.get("startDate") or request.get("from_date")) or (end - timedelta(days=1))
 
         chart_values = []
         raw_values = {}
         for symbol in symbols:
             resolved = store.resolve_symbol(symbol)
             candles = simulator.historical_candles(resolved, interval, start, end, include_partial=include_partial)
+            if limit and limit > 0:
+                candles = candles[-limit:]
             chart_values.append({resolved: stock_chart(candles, fields)})
             raw_values[resolved] = convenient_candles(candles)
 

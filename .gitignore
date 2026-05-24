@@ -1,0 +1,50 @@
+# Node.js / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python cache & packaging
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+.hypothesis/
+.pytest_cache/
+.antigravitycli/
+
+# Local server states / databases
+mock_server/session_state.json
+session_state.json
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Archives
+archive.zip

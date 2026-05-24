@@ -184,7 +184,7 @@ class MarketDataStore:
         for row in rows[1:]:
             prev = filled[-1]
             cursor = prev.timestamp + timedelta(minutes=1)
-            while cursor < row.timestamp and cursor.date() == prev.timestamp.date():
+            while cursor < row.timestamp and cursor.date() == prev.timestamp.date() and cursor.time() <= MARKET_CLOSE:
                 filled.append(Candle(cursor, prev.close, prev.close, prev.close, prev.close, 0))
                 cursor += timedelta(minutes=1)
             filled.append(row)
@@ -345,6 +345,55 @@ class MarketSimulator:
         return start + ((end - start) * max(0.0, min(1.0, fraction)))
 
 
+def load_config_start_date(root: Path) -> str | None:
+    # 1. Try env variable
+    val = os.getenv("START_DATE")
+    if val:
+        return val.strip()
+
+    # 2. Try config.py in root or config.py in mock_server
+    for search_dir in [root, root / "mock_server"]:
+        config_py = search_dir / "config.py"
+        if config_py.exists():
+            try:
+                scope: dict = {}
+                exec(config_py.read_text(encoding="utf-8"), scope)
+                if "START_DATE" in scope and scope["START_DATE"]:
+                    return str(scope["START_DATE"]).strip()
+            except Exception:
+                pass
+
+    # 3. Try config.yaml / config.yml in root or mock_server
+    for search_dir in [root, root / "mock_server"]:
+        for name in ["config.yaml", "config.yml"]:
+            config_yaml = search_dir / name
+            if config_yaml.exists():
+                try:
+                    for line in config_yaml.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if ":" in line:
+                            k, v = line.split(":", 1)
+                            if k.strip().upper() == "START_DATE":
+                                return v.strip().strip("'\"")
+                except Exception:
+                    pass
+
+    # 4. Try config.json in root or mock_server
+    for search_dir in [root, root / "mock_server"]:
+        config_json = search_dir / "config.json"
+        if config_json.exists():
+            try:
+                data = json.loads(config_json.read_text(encoding="utf-8"))
+                if "START_DATE" in data and data["START_DATE"]:
+                    return str(data["START_DATE"]).strip()
+            except Exception:
+                pass
+
+    return None
+
+
 def create_default_stack() -> tuple[MarketDataStore, VirtualClock, MarketSimulator, Path]:
     root = Path(__file__).resolve().parents[1]
     data_dir = Path(os.getenv("MOCK_BROKER_DATA_DIR", str(root / "1m_Interval")))
@@ -352,11 +401,11 @@ def create_default_stack() -> tuple[MarketDataStore, VirtualClock, MarketSimulat
     store = MarketDataStore(data_dir)
     trading_days = sorted(store.available_dates)
 
-    start_date_text = os.getenv("START_DATE")
+    start_date_text = load_config_start_date(root)
     start_date = date.fromisoformat(start_date_text) if start_date_text else store.first_date()
     clock_start = datetime.combine(start_date, MARKET_OPEN, tzinfo=IST)
 
-    if state_path.exists():
+    if state_path.exists() and not start_date_text:
         try:
             saved = json.loads(state_path.read_text(encoding="utf-8"))
             saved_time = saved.get("clock_virtual_time")
@@ -369,4 +418,3 @@ def create_default_stack() -> tuple[MarketDataStore, VirtualClock, MarketSimulat
     clock = VirtualClock(clock_start, trading_days=trading_days, speed=float(os.getenv("MOCK_BROKER_SPEED", "1.0")))
     simulator = MarketSimulator(store, clock, seed=os.getenv("MOCK_BROKER_SEED", "nubra-mock"))
     return store, clock, simulator, state_path
-
